@@ -2,9 +2,12 @@
 .gitignore
 __pycache__
 *.pyc
-venv
-venv_new
-.pytest_cache
-test_*
+.env
+.env.local
+venv/
+.venv/
+node_modules/
+*.log
+.DS_Store
 README.md
 requirements-dev.txt 
