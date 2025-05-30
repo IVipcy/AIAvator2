@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>データ管理 - {{ title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>データ管理</h1>
+        
+        <nav class="navigation">
+            <a href="{{ url_for('index') }}">ホームに戻る</a>
+        </nav>
+        
+        {% if message %}
+        <div class="alert alert-success">{{ message }}</div>
+        {% endif %}
+        
+        {% if error %}
+        <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+        
+        <div class="data-section">
+            <h2>ファイルアップロード</h2>
+            <form action="{{ url_for('upload_files') }}" method="post" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="files">ファイルを選択:</label>
+                    <input type="file" id="files" name="files" multiple>
+                    <p class="help-text">テキスト(.txt)やPDF(.pdf)ファイルをアップロードできます</p>
+                </div>
+                <button type="submit" class="btn">アップロード</button>
+            </form>
+        </div>
+        
+        <div class="data-section">
+            <h2>アップロード済みファイル</h2>
+            {% if files %}
+            <ul class="file-list">
+                {% for file in files %}
+                <li>{{ file }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>アップロードされたファイルはありません。</p>
+            {% endif %}
+        </div>
+        
+        <div class="data-section">
+            <h2>RAGシステム処理</h2>
+            <form action="{{ url_for('process_documents') }}" method="post">
+                <p>アップロードしたファイルをRAGシステムに取り込みます。</p>
+                <button type="submit" class="btn">ファイルを処理</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
