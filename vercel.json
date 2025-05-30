@@ -3,23 +3,13 @@
     "builds": [
         {
             "src": "app.py",
-            "use": "@vercel/python@3",
-            "config": {
-                "runtime": "python3.9",
-                "pythonVersion": "3.9",
-                "maxLambdaSize": "15mb"
-            }
+            "use": "@now/python"
         }
     ],
     "routes": [
         {
             "src": "/(.*)",
-            "dest": "/app.py"
+            "dest": "app.py"
         }
-    ],
-    "env": {
-        "PYTHON_VERSION": "3.9",
-        "VERCEL_PYTHON_RUNTIME": "3.9",
-        "POETRY_VERSION": "1.4.2"
-    }
+    ]
 } 
