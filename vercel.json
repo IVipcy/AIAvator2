@@ -1,10 +1,16 @@
 {
     "version": 2,
-    "functions": {
-        "api/*.py": {
-            "runtime": "python3.9"
+    "builds": [
+        {
+            "src": "app.py",
+            "use": "@vercel/python@3",
+            "config": {
+                "runtime": "python3.9",
+                "pythonVersion": "3.9",
+                "maxLambdaSize": "15mb"
+            }
         }
-    },
+    ],
     "routes": [
         {
             "src": "/(.*)",
@@ -12,6 +18,8 @@
         }
     ],
     "env": {
-        "PYTHON_VERSION": "3.9"
+        "PYTHON_VERSION": "3.9",
+        "VERCEL_PYTHON_RUNTIME": "3.9",
+        "POETRY_VERSION": "1.4.2"
     }
 } 
