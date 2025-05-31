@@ -18,6 +18,5 @@
       "src": "/(.*)",
       "dest": "app.py"
     }
-  ],
-  "framework": "other"
+  ]
 } 
