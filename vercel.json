@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "ai-avator2-pro5",
+  "name": "ai-avator2-pro6",
   "routes": [
     {
       "src": "/socket.io/(.*)",
