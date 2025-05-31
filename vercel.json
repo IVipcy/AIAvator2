@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "ai-avator2-pro",
+  "name": "ai-avator2-pro3",
   "git": {
     "deploymentEnabled": {
       "master": true
@@ -11,7 +11,6 @@
       "src": "app.py",
       "use": "@vercel/python",
       "config": {
-        "buildCommand": "pip install --no-cache-dir -r requirements.txt && python -m pip install --upgrade pip",
         "maxLambdaSize": "50mb",
         "pythonVersion": "3.9",
         "runtime": "python3.9"
@@ -30,12 +29,6 @@
   ],
   "env": {
     "PYTHONUNBUFFERED": "1"
-  },
-  "functions": {
-    "app.py": {
-      "memory": 1024,
-      "maxDuration": 60
-    }
   },
   "regions": ["hnd1"],
   "analytics": {
