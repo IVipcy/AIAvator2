@@ -2,6 +2,7 @@
 # 感情分析品質改善版 + サジェスチョン重複防止 + 回答品質向上
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit
+from flask_migrate import Migrate
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import os
@@ -13,24 +14,33 @@ import re
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 from typing import Dict, Tuple, List, Set
+from supabase import create_client, Client
 from modules.rag_system import RAGSystem
 from modules.speech_processor import SpeechProcessor
 from modules.openai_tts_client import OpenAITTSClient
 from modules.coe_font_client import CoeFontClient
 from modules.emotion_voice_params import get_emotion_voice_params
 from openai import OpenAI
+from models import db, Session, Visitor, EmotionHistory, QuestionCount, UploadedFile
 
 # 静的Q&Aシステム
 from static_qa_data import get_static_response, STATIC_QA_PAIRS
 
-# 環境変数をロード
-load_dotenv()
+# 設定ファイルの読み込み
+from config import Config
 
 # Flaskアプリケーションの初期化
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your_secret_key')
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['DEBUG'] = os.getenv('DEBUG', 'False').lower() == 'true'
+app.config.from_object(Config)
+
+# データベースの初期化
+db.init_app(app)
+
+# マイグレーションの初期化
+migrate = Migrate(app, db)
+
+# Supabaseクライアントの初期化
+supabase: Client = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
 
 # Socket.IOの設定
 socketio = SocketIO(
@@ -53,6 +63,52 @@ socketio = SocketIO(
     monitor_clients=True,
     ping_interval_grace_period=1000
 )
+
+# 一時アップロードディレクトリの作成
+os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+
+# データベーステーブルの作成
+with app.app_context():
+    db.create_all()
+
+# ファイルアップロード処理の関数
+def save_uploaded_file(file) -> UploadedFile:
+    """ファイルをSupabaseストレージにアップロードし、データベースに記録"""
+    if not file:
+        return None
+        
+    filename = secure_filename(file.filename)
+    temp_path = os.path.join(Config.UPLOAD_FOLDER, filename)
+    
+    try:
+        # 一時ファイルとして保存
+        file.save(temp_path)
+        
+        # Supabaseストレージにアップロード
+        storage_path = f'uploads/{filename}'
+        with open(temp_path, 'rb') as f:
+            supabase.storage.from_('uploads').upload(storage_path, f)
+            
+        # データベースに記録
+        uploaded_file = UploadedFile(
+            filename=filename,
+            storage_path=storage_path,
+            file_type=file.content_type,
+            size=os.path.getsize(temp_path)
+        )
+        db.session.add(uploaded_file)
+        db.session.commit()
+        
+        # 一時ファイルを削除
+        os.remove(temp_path)
+        
+        return uploaded_file
+        
+    except Exception as e:
+        print(f"ファイルアップロードエラー: {e}")
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return None
 
 # ====== 🎯 感情分析システム（改善版） ======
 class EmotionAnalyzer:
@@ -303,153 +359,76 @@ def get_relationship_adjusted_greeting(language, relationship_style):
     
     return greetings.get(language, greetings['ja']).get(relationship_style, greetings[language]['formal'])
 
-def get_session_data(session_id):
-    """セッションデータを取得（感情履歴対応版）"""
-    if session_id not in session_data:
-        session_data[session_id] = {
-            'language': 'ja',
-            'user_id': str(uuid.uuid4()),
-            'visitor_id': None,
-            'conversation_history': [],
-            'interaction_count': 0,
-            'relationship_level': 0,
-            'relationship_style': 'formal',
-            'last_topics': [],
-            'session_start': datetime.now().isoformat(),
-            'current_topic': None,
-            'question_counts': defaultdict(int),
-            'current_emotion': 'neutral',  # 🎯 現在の感情
-            'emotion_history': deque(maxlen=20),  # 🎯 感情履歴（最新20個）
-            'mental_state': {  # 🎯 現在の精神状態
-                'energy_level': 80,
-                'stress_level': 20,
-                'openness': 70,
-                'patience': 90,
-                'creativity': 85,
-                'loneliness': 30,
-                'work_satisfaction': 90,
-                'physical_fatigue': 20
-            },
-            'selected_suggestions': [],  # 🎯 選択されたサジェスチョンの履歴
-            'fatigue_mentioned': False  # 🎯 疲労について言及したか
-        }
-        # 感情履歴の初期化
-        emotion_histories[session_id] = deque(maxlen=50)
-        mental_state_histories[session_id] = deque(maxlen=50)
-    return session_data[session_id]
+def get_session_data(session_id: str) -> Session:
+    """セッションデータを取得"""
+    return Session.query.get(session_id)
 
-def get_visitor_data(visitor_id):
-    """訪問者データを取得または作成"""
-    if visitor_id not in visitor_data:
-        visitor_data[visitor_id] = {
-            'first_seen': datetime.now().isoformat(),
-            'visit_count': 1,
-            'total_conversations': 0,
-            'topics_discussed': [],
-            'relationship_level': 0,
-            'relationship_style': 'formal',
-            'favorite_topics': [],
-            'last_visit': datetime.now().isoformat(),
-            'question_history': defaultdict(int),
-            'personality_traits': {
-                'interests': [],
-                'communication_style': 'neutral',
-                'knowledge_level': 'beginner'
-            },
-            'selected_suggestions': set()  # 🎯 選択されたサジェスチョンの記録
-        }
-    return visitor_data[visitor_id]
+def get_visitor_data(visitor_id: str) -> Visitor:
+    """訪問者データを取得"""
+    return Visitor.query.get(visitor_id)
 
-def update_visitor_data(visitor_id, session_info):
+def update_visitor_data(visitor_id: str, session_info: dict) -> Visitor:
     """訪問者データを更新"""
-    if visitor_id:
-        v_data = get_visitor_data(visitor_id)
-        v_data['last_visit'] = datetime.now().isoformat()
-        v_data['total_conversations'] += session_info.get('interaction_count', 0)
-        
-        # トピックの更新
-        for topic in session_info.get('last_topics', []):
-            if topic not in v_data['topics_discussed']:
-                v_data['topics_discussed'].append(topic)
-        
-        # 関係性レベルの更新
-        current_level = session_info.get('relationship_level', 0)
-        if current_level > v_data['relationship_level']:
-            v_data['relationship_level'] = current_level
-        
-        # 関係性スタイルの更新
-        v_data['relationship_style'] = session_info.get('relationship_style', 'formal')
-        
-        # 選択されたサジェスチョンの更新
-        for suggestion in session_info.get('selected_suggestions', []):
-            v_data['selected_suggestions'].add(suggestion)
+    visitor = Visitor.query.get(visitor_id)
+    if not visitor:
+        visitor = Visitor(id=visitor_id)
+        db.session.add(visitor)
+    
+    visitor.last_visit = datetime.utcnow()
+    visitor.visit_count += 1
+    
+    if session_info:
+        visitor.preferences = session_info.get('preferences', {})
+        if 'conversation_count' in session_info:
+            visitor.conversation_count = session_info['conversation_count']
+    
+    db.session.commit()
+    return visitor
 
-def update_emotion_history(session_id, emotion, mental_state=None):
-    """🎯 感情履歴を更新"""
-    session_info = get_session_data(session_id)
-    
-    # 現在の感情を更新
-    previous_emotion = session_info.get('current_emotion', 'neutral')
-    session_info['current_emotion'] = emotion
-    session_info['emotion_history'].append({
-        'emotion': emotion,
-        'timestamp': datetime.now().isoformat(),
-        'interaction_count': session_info['interaction_count']
-    })
-    
-    # 感情遷移の統計を更新
-    emotion_transition_stats[previous_emotion][emotion] += 1
-    
-    # 全体の感情履歴に追加
-    if session_id in emotion_histories:
-        emotion_histories[session_id].append({
-            'emotion': emotion,
-            'timestamp': datetime.now().isoformat()
-        })
-    
-    # 精神状態も記録
-    if mental_state:
-        session_info['mental_state'] = mental_state
-        if session_id in mental_state_histories:
-            mental_state_histories[session_id].append({
-                'state': mental_state,
-                'timestamp': datetime.now().isoformat()
-            })
+def update_emotion_history(session_id: str, emotion: str, confidence: float = 0.5, mental_state: dict = None):
+    """感情履歴を更新"""
+    emotion_record = EmotionHistory(
+        session_id=session_id,
+        emotion=emotion,
+        confidence=confidence,
+        mental_state=mental_state
+    )
+    db.session.add(emotion_record)
+    db.session.commit()
 
 def normalize_question(question):
     """質問を正規化（重複判定用）"""
     return question.lower().replace('？', '').replace('?', '').replace('。', '').replace('、', '').replace('！', '').replace('!', '').strip()
 
-def get_question_count(session_id, visitor_id, question):
+def get_question_count(session_id: str, visitor_id: str, question: str) -> int:
     """質問の回数を取得"""
-    normalized = normalize_question(question)
-    session_info = get_session_data(session_id)
-    
-    # セッション内での回数
-    session_count = session_info['question_counts'][normalized]
-    
-    # 訪問者全体での回数
-    visitor_count = 0
-    if visitor_id:
-        v_data = get_visitor_data(visitor_id)
-        visitor_count = v_data['question_history'][normalized]
-    
-    return max(session_count, visitor_count)
+    record = QuestionCount.query.filter_by(
+        session_id=session_id,
+        visitor_id=visitor_id,
+        question=question
+    ).first()
+    return record.count if record else 0
 
-def increment_question_count(session_id, visitor_id, question):
-    """質問回数をインクリメント"""
-    normalized = normalize_question(question)
-    session_info = get_session_data(session_id)
+def increment_question_count(session_id: str, visitor_id: str, question: str):
+    """質問の回数をインクリメント"""
+    record = QuestionCount.query.filter_by(
+        session_id=session_id,
+        visitor_id=visitor_id,
+        question=question
+    ).first()
     
-    # セッションでカウント
-    session_info['question_counts'][normalized] += 1
+    if record:
+        record.count += 1
+        record.last_asked = datetime.utcnow()
+    else:
+        record = QuestionCount(
+            session_id=session_id,
+            visitor_id=visitor_id,
+            question=question
+        )
+        db.session.add(record)
     
-    # 訪問者データでもカウント
-    if visitor_id:
-        v_data = get_visitor_data(visitor_id)
-        v_data['question_history'][normalized] += 1
-    
-    return session_info['question_counts'][normalized]
+    db.session.commit()
 
 def extract_topic_from_question(question):
     """質問からトピックを抽出（簡易版）"""
@@ -767,73 +746,169 @@ def print_cache_stats():
 
 @app.route('/')
 def index():
-    return render_template('index.html', title='感情的AIアバター')
+    """メインページ"""
+    # 新しいセッションとビジターIDを生成
+    session_id = str(uuid.uuid4())
+    visitor_id = str(uuid.uuid4())
+    
+    # セッションを作成
+    new_session = Session(
+        id=session_id,
+        visitor_id=visitor_id,
+        conversation_history=[],
+        language='ja',
+        relationship_style='formal'
+    )
+    
+    # ビジターを作成
+    new_visitor = Visitor(
+        id=visitor_id,
+        preferences={
+            'language': 'ja',
+            'relationship_style': 'formal'
+        }
+    )
+    
+    db.session.add(new_visitor)
+    db.session.add(new_session)
+    db.session.commit()
+    
+    # セッションCookieを設定
+    session['session_id'] = session_id
+    session['visitor_id'] = visitor_id
+    
+    return render_template('index.html')
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """チャットAPIエンドポイント"""
+    data = request.get_json()
+    message = data.get('message', '')
+    session_id = session.get('session_id')
+    visitor_id = session.get('visitor_id')
+    
+    if not session_id or not visitor_id:
+        return jsonify({'error': 'Invalid session'}), 400
+    
+    # セッションとビジターデータを取得
+    session_data = get_session_data(session_id)
+    visitor_data = get_visitor_data(visitor_id)
+    
+    if not session_data or not visitor_data:
+        return jsonify({'error': 'Session not found'}), 404
+    
+    # 質問回数を更新
+    increment_question_count(session_id, visitor_id, message)
+    
+    # 会話履歴を更新
+    conversation_history = session_data.conversation_history or []
+    conversation_history.append({
+        'role': 'user',
+        'content': message,
+        'timestamp': datetime.utcnow().isoformat()
+    })
+    
+    # AIの応答を生成
+    response = generate_ai_response(message, session_data, visitor_data)
+    
+    # 感情分析を実行
+    emotion, confidence, mental_state = analyze_emotion(message, session_data)
+    update_emotion_history(session_id, emotion, confidence, mental_state)
+    
+    # 会話履歴に応答を追加
+    conversation_history.append({
+        'role': 'assistant',
+        'content': response,
+        'timestamp': datetime.utcnow().isoformat()
+    })
+    
+    # セッションデータを更新
+    session_data.conversation_history = conversation_history
+    session_data.last_activity = datetime.utcnow()
+    db.session.commit()
+    
+    return jsonify({
+        'response': response,
+        'emotion': emotion,
+        'mental_state': mental_state
+    })
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """ファイルアップロードエンドポイント"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+        
+    uploaded_file = save_uploaded_file(file)
+    if not uploaded_file:
+        return jsonify({'error': 'Failed to upload file'}), 500
+        
+    return jsonify({
+        'message': 'File uploaded successfully',
+        'filename': uploaded_file.filename,
+        'storage_path': uploaded_file.storage_path
+    })
 
 @app.route('/data-management')
 def data_management():
-    files = []
-    if os.path.exists(app.config['UPLOAD_FOLDER']):
-        files = os.listdir(app.config['UPLOAD_FOLDER'])
-    return render_template('data_management.html', title='感情的AIアバター', files=files)
+    """データ管理ページ"""
+    # セッション一覧を取得
+    sessions = Session.query.order_by(Session.last_activity.desc()).limit(100).all()
+    
+    # 訪問者一覧を取得
+    visitors = Visitor.query.order_by(Visitor.last_visit.desc()).limit(100).all()
+    
+    # 感情履歴を取得
+    emotions = EmotionHistory.query.order_by(EmotionHistory.timestamp.desc()).limit(100).all()
+    
+    # アップロードされたファイル一覧を取得
+    files = UploadedFile.query.order_by(UploadedFile.uploaded_at.desc()).all()
+    
+    return render_template(
+        'data_management.html',
+        sessions=sessions,
+        visitors=visitors,
+        emotions=emotions,
+        files=files
+    )
 
-@app.route('/upload-files', methods=['POST'])
-def upload_files():
-    if 'files' not in request.files:
-        return redirect(url_for('data_management'))
-    
-    files = request.files.getlist('files')
-    
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
-    
-    for file in files:
-        if file.filename:
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    
-    return render_template('data_management.html', 
-                          title='感情的AIアバター', 
-                          files=os.listdir(app.config['UPLOAD_FOLDER']),
-                          message='ファイルが正常にアップロードされました')
-
-@app.route('/process-documents', methods=['POST'])
-def process_documents():
-    success = rag_system.process_documents(app.config['UPLOAD_FOLDER'])
-    
-    files = []
-    if os.path.exists(app.config['UPLOAD_FOLDER']):
-        files = os.listdir(app.config['UPLOAD_FOLDER'])
-    
-    if success:
-        return render_template('data_management.html', 
-                              title='感情的AIアバター', 
-                              files=files,
-                              message='ドキュメントが正常に処理されました')
-    else:
-        return render_template('data_management.html', 
-                              title='感情的AIアバター', 
-                              files=files,
-                              error='ドキュメントの処理中にエラーが発生しました')
-
-@app.route('/cache-stats')
-def show_cache_stats():
-    """キャッシュ統計を表示"""
-    return jsonify({
-        'total_requests': cache_stats['total_requests'],
-        'cache_hits': cache_stats['cache_hits'],
-        'cache_misses': cache_stats['cache_misses'],
-        'hit_rate': (cache_stats['cache_hits'] / max(cache_stats['total_requests'], 1)) * 100,
-        'total_time_saved': cache_stats['total_time_saved'],
-        'available_static_qa': len(STATIC_QA_PAIRS),
-        'coe_font_requests': cache_stats['coe_font_requests'],
-        'openai_tts_requests': cache_stats['openai_tts_requests'],
-        'coe_font_available': use_coe_font,
-        'system_status': {
-            'coe_font': 'available' if use_coe_font else 'unavailable',
-            'openai_tts': 'available',
-            'rag_system': 'available'
-        }
-    })
+@app.route('/api/stats')
+def get_stats():
+    """統計情報API"""
+    try:
+        # 基本統計
+        total_sessions = Session.query.count()
+        total_visitors = Visitor.query.count()
+        total_emotions = EmotionHistory.query.count()
+        total_files = UploadedFile.query.count()
+        
+        # アクティブセッション（24時間以内）
+        active_sessions = Session.query.filter(
+            Session.last_activity >= datetime.utcnow() - timedelta(hours=24)
+        ).count()
+        
+        # 感情分布
+        emotion_stats = db.session.query(
+            EmotionHistory.emotion,
+            db.func.count(EmotionHistory.id)
+        ).group_by(EmotionHistory.emotion).all()
+        
+        return jsonify({
+            'total_sessions': total_sessions,
+            'total_visitors': total_visitors,
+            'total_emotions': total_emotions,
+            'total_files': total_files,
+            'active_sessions': active_sessions,
+            'emotion_distribution': dict(emotion_stats)
+        })
+        
+    except Exception as e:
+        print(f"統計情報取得エラー: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # ====== 🧠 会話記憶システムのデバッグエンドポイント ======
 @app.route('/visitor-stats')
@@ -930,360 +1005,135 @@ def handle_visitor_info(data):
 
 @socketio.on('connect')
 def handle_connect():
-    session_id = request.sid
-    data = get_session_data(session_id)
-    language = data["language"]
+    """WebSocket接続ハンドラー"""
+    session_id = session.get('session_id')
+    visitor_id = session.get('visitor_id')
     
-    # 訪問者の関係性レベルを確認
-    visitor_id = data.get('visitor_id')
-    visitor_info = None
-    relationship_style = 'formal'
-    if visitor_id and visitor_id in visitor_data:
-        visitor_info = visitor_data[visitor_id]
-        conversation_count = visitor_info.get('total_conversations', 0)
-        rel_info = calculate_relationship_level(conversation_count)
-        relationship_style = rel_info['style']
-        data['relationship_style'] = relationship_style
+    if not session_id or not visitor_id:
+        return False
     
-    print(f'🔌 クライアント接続: {session_id}, 言語: {language}, 関係性: {relationship_style}')
-    emit('status', {'message': '接続成功'})
+    session_data = get_session_data(session_id)
+    visitor_data = get_visitor_data(visitor_id)
     
-    emit('current_language', {'language': language})
+    if not session_data or not visitor_data:
+        return False
     
-    # 関係性レベルに応じた初期挨拶
-    greeting_message = get_relationship_adjusted_greeting(language, relationship_style)
-    greeting_emotion = "happy"
+    # 最後のアクティビティを更新
+    session_data.last_activity = datetime.utcnow()
+    db.session.commit()
     
-    # 🎯 初回の感情を記録
-    update_emotion_history(session_id, greeting_emotion)
-    
-    try:
-        audio_data = generate_audio_by_language(
-            greeting_message, 
-            language, 
-            emotion_params=greeting_emotion
-        )
-    except Exception as e:
-        print(f"❌ 挨拶音声生成エラー: {e}")
-        audio_data = None
-    
-    greeting_data = {
-        'message': greeting_message,
-        'emotion': greeting_emotion,
-        'audio': audio_data,
-        'isGreeting': True,
-        'language': language,
-        'voice_engine': 'coe_font' if use_coe_font and language == 'ja' else 'openai_tts',
-        'relationshipLevel': relationship_style,
-        'mentalState': data['mental_state']  # 🎯 精神状態も送信
-    }
-    
-    # 優先順位付きサジェスチョンを生成
-    greeting_data['suggestions'] = generate_prioritized_suggestions(
-        data, visitor_info, relationship_style, language
-    )
-    
-    emit('greeting', greeting_data)
+    emit('connection_established', {
+        'session_id': session_id,
+        'visitor_id': visitor_id,
+        'language': session_data.language,
+        'relationship_style': session_data.relationship_style
+    })
+    return True
 
 @socketio.on('set_language')
 def handle_set_language(data):
-    session_id = request.sid
+    """言語設定ハンドラー"""
+    session_id = session.get('session_id')
     language = data.get('language', 'ja')
     
-    session_info = get_session_data(session_id)
-    session_info['language'] = language
+    if not session_id:
+        emit('error', {'message': 'Invalid session'})
+        return
     
-    # 関係性レベルを確認
-    visitor_id = session_info.get('visitor_id')
-    visitor_info = None
-    relationship_style = 'formal'
-    if visitor_id and visitor_id in visitor_data:
-        visitor_info = visitor_data[visitor_id]
-        conversation_count = visitor_info.get('total_conversations', 0)
-        rel_info = calculate_relationship_level(conversation_count)
-        relationship_style = rel_info['style']
+    session_data = get_session_data(session_id)
+    if not session_data:
+        emit('error', {'message': 'Session not found'})
+        return
     
-    print(f"🌐 言語設定変更: {session_id} -> {language}")
+    session_data.language = language
+    db.session.commit()
     
-    emit('language_changed', {'language': language})
+    emit('language_updated', {'language': language})
+
+@socketio.on('set_relationship_style')
+def handle_set_relationship_style(data):
+    """関係性スタイル設定ハンドラー"""
+    session_id = session.get('session_id')
+    style = data.get('style', 'formal')
     
-    # 関係性レベルに応じた挨拶
-    greeting_message = get_relationship_adjusted_greeting(language, relationship_style)
-    greeting_emotion = "happy"
+    if not session_id:
+        emit('error', {'message': 'Invalid session'})
+        return
     
-    try:
-        audio_data = generate_audio_by_language(
-            greeting_message, 
-            language, 
-            emotion_params=greeting_emotion
-        )
-    except Exception as e:
-        print(f"❌ 挨拶音声生成エラー: {e}")
-        audio_data = None
+    session_data = get_session_data(session_id)
+    if not session_data:
+        emit('error', {'message': 'Session not found'})
+        return
     
-    greeting_data = {
-        'message': greeting_message,
-        'emotion': greeting_emotion,
-        'audio': audio_data,
-        'isGreeting': True,
-        'language': language,
-        'voice_engine': 'coe_font' if use_coe_font and language == 'ja' else 'openai_tts',
-        'relationshipLevel': relationship_style,
-        'mentalState': session_info['mental_state']
-    }
+    session_data.relationship_style = style
+    db.session.commit()
     
-    # 言語に応じたサジェスチョンを生成
-    greeting_data['suggestions'] = generate_prioritized_suggestions(
-        session_info, visitor_info, relationship_style, language
-    )
-    
-    emit('greeting', greeting_data)
+    emit('relationship_style_updated', {'style': style})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    session_id = request.sid
-    
-    # セッション終了時に訪問者データを更新
-    if session_id in session_data:
-        session_info = session_data[session_id]
-        visitor_id = session_info.get('visitor_id')
-        
-        if visitor_id:
-            update_visitor_data(visitor_id, session_info)
-        
-        del session_data[session_id]
-    
-    print(f'🔌 クライアント切断: {session_id}')
-    print_cache_stats()
+    """WebSocket切断ハンドラー"""
+    session_id = session.get('session_id')
+    if session_id:
+        session_data = get_session_data(session_id)
+        if session_data:
+            session_data.last_activity = datetime.utcnow()
+            db.session.commit()
 
 # ====== 🧠 会話記憶対応メッセージハンドラー（感情履歴管理強化版） ======
 @socketio.on('message')
 def handle_message(data):
-    start_time = time.time()
+    """WebSocketメッセージハンドラー"""
+    session_id = session.get('session_id')
+    visitor_id = session.get('visitor_id')
+    message = data.get('message', '')
     
-    try:
-        session_id = request.sid
-        session_info = get_session_data(session_id)
-        language = session_info['language']
-        
-        message = data.get('message', '')
-        visitor_id = data.get('visitorId')
-        conversation_history = data.get('conversationHistory', [])
-        interaction_count = data.get('interactionCount', 0)
-        relationship_level_style = data.get('relationshipLevel', 'formal')
-        
-        print(f'📨 受信メッセージ: {message} (言語: {language}, 訪問者: {visitor_id}, 関係性: {relationship_level_style})')
-        
-        # サジェスチョンが選択された場合、記録する
-        if message in session_info.get('selected_suggestions', []):
-            pass  # 既に記録済み
-        else:
-            session_info['selected_suggestions'].append(message)
-            if visitor_id:
-                v_data = get_visitor_data(visitor_id)
-                v_data['selected_suggestions'].add(message)
-        
-        # 訪問者IDを更新
-        if visitor_id:
-            session_info['visitor_id'] = visitor_id
-            session_info['relationship_style'] = relationship_level_style
-        
-        # 会話履歴を更新
-        session_info['conversation_history'] = conversation_history
-        session_info['interaction_count'] = interaction_count
-        
-        # 質問回数を取得・更新
-        question_count = increment_question_count(session_id, visitor_id, message)
-        print(f"📊 質問回数: {question_count}回目")
-        
-        # トピック抽出
-        current_topic = extract_topic_from_question(message)
-        session_info['current_topic'] = current_topic
-        
-        if current_topic not in session_info['last_topics']:
-            session_info['last_topics'].append(current_topic)
-            if len(session_info['last_topics']) > 10:
-                session_info['last_topics'].pop(0)
-        
-        # 統計更新
-        cache_stats['total_requests'] += 1
-        
-        if not message:
-            emit('error', {'message': 'メッセージが空です'})
-            return
-        
-        # 静的キャッシュをチェック
-        static_response = get_static_response(message)
-        
-        if static_response:
-            cache_hit_time = time.time()
-            processing_time = cache_hit_time - start_time
-            
-            print(f"🚀 静的キャッシュヒット！ 処理時間: {processing_time:.3f}秒")
-            
-            cache_stats['cache_hits'] += 1
-            estimated_saved_time = 6.0
-            cache_stats['total_time_saved'] += estimated_saved_time
-            
-            emotion = static_response['emotion']
-            response = static_response['answer']
-            suggestions = static_response.get('suggestions', [])
-            
-            # 🎯 感情履歴を更新
-            update_emotion_history(session_id, emotion, session_info['mental_state'])
-            
-            # 質問回数に応じて応答を調整
-            if question_count > 1:
-                if question_count == 2:
-                    response = f"あ、さっきも聞かれたね。{response}"
-                elif question_count == 3:
-                    response = f"また同じ質問？よっぽど気になるんやね〜。{response}"
-                elif question_count >= 4:
-                    response = f"もう覚えてや〜（笑）でも、もう一回説明するね。{response}"
-            
-            if language == 'en':
-                response = adjust_response_for_language(response, language)
-                translated_suggestions = []
-                for suggestion in suggestions:
-                    translated = adjust_response_for_language(suggestion, language)
-                    translated_suggestions.append(translated)
-                suggestions = translated_suggestions
-            
-            try:
-                audio_data = generate_audio_by_language(
-                    response, 
-                    language, 
-                    emotion_params=emotion
-                )
-            except Exception as e:
-                print(f"❌ キャッシュ応答の音声合成エラー: {e}")
-                audio_data = None
-            
-            # 優先順位付きサジェスチョンを生成（キャッシュヒット時も）
-            visitor_info = get_visitor_data(visitor_id) if visitor_id else None
-            suggestions = generate_prioritized_suggestions(
-                session_info, visitor_info, relationship_level_style, language
-            )
-            
-            response_data = {
-                'message': response,
-                'emotion': emotion,
-                'audio': audio_data,
-                'suggestions': suggestions,
-                'language': language,
-                'cached': True,
-                'processing_time': processing_time,
-                'voice_engine': 'coe_font' if use_coe_font and language == 'ja' else 'openai_tts',
-                'currentTopic': current_topic,
-                'relationshipLevel': relationship_level_style,
-                'mentalState': session_info['mental_state']  # 🎯 精神状態も送信
-            }
-            
-            print(f"⚡ キャッシュ応答送信完了 - 感情: {emotion}, 処理時間: {processing_time:.3f}秒")
-            emit('response', response_data)
-            return
-        
-        # キャッシュミス → 通常処理（関係性レベル・感情履歴対応）
-        print(f"❌ キャッシュミス → 通常のRAG処理を実行")
-        cache_stats['cache_misses'] += 1
-        
-        try:
-            user_emotion = analyze_emotion(message)
-            print(f"🎭 ユーザーメッセージの感情分析結果: {user_emotion}")
-        except Exception as e:
-            print(f"❌ 感情分析エラー: {e}")
-            user_emotion = "neutral"
-        
-        # 🎯 前回の感情を取得
-        previous_emotion = session_info.get('current_emotion', 'neutral')
-        
-        # 🎯 文脈プロンプトを生成（関係性レベル付き）
-        context_prompt = get_context_prompt(
-            conversation_history, 
-            question_count, 
-            relationship_level_style,
-            session_info.get('fatigue_mentioned', False)
-        )
-        
-        # RAGシステムで回答とサジェスションを生成（文脈付き）
-        try:
-            # RAGシステムに文脈と関係性レベルを渡す
-            response_data_rag = rag_system.answer_with_suggestions(
-                message, 
-                context=context_prompt,
-                question_count=question_count,
-                relationship_style=relationship_level_style,
-                previous_emotion=previous_emotion  # 🎯 前回の感情も渡す
-            )
-            response = response_data_rag['answer']
-            next_suggestions = response_data_rag.get('suggestions', [])
-            current_emotion = response_data_rag.get('current_emotion', user_emotion)  # 🎯 現在の感情を取得
-            
-            # 疲労表現をチェック
-            if '疲れ' in response and not session_info.get('fatigue_mentioned', False):
-                session_info['fatigue_mentioned'] = True
-            
-            # 🎯 感情履歴を更新（RAGシステムから取得した精神状態を使用）
-            if hasattr(rag_system, 'mental_states'):
-                update_emotion_history(session_id, current_emotion, rag_system.mental_states)
-            else:
-                update_emotion_history(session_id, current_emotion)
-            
-            response = adjust_response_for_language(response, language)
-            
-            # 優先順位付きサジェスチョンを生成（RAGの提案を上書き）
-            visitor_info = get_visitor_data(visitor_id) if visitor_id else None
-            next_suggestions = generate_prioritized_suggestions(
-                session_info, visitor_info, relationship_level_style, language
-            )
-            
-            if not response:
-                emit('error', {'message': '回答の生成に失敗しました'})
-                return
-        except Exception as e:
-            print(f"❌ RAGシステムエラー: {e}")
-            emit('error', {'message': f'回答の生成中にエラーが発生しました: {str(e)}'})
-            return
-        
-        # 🎯 最終的な感情を使用
-        final_emotion = current_emotion
-        print(f"🎯 最終的に使用する感情: {final_emotion}")
-        
-        try:
-            audio_data = generate_audio_by_language(
-                response, 
-                language, 
-                emotion_params=final_emotion
-            )
-        except Exception as e:
-            print(f"❌ 音声合成エラー: {e}")
-            audio_data = None
-        
-        end_time = time.time()
-        processing_time = end_time - start_time
-        
-        response_data = {
-            'message': response,
-            'emotion': final_emotion,
-            'audio': audio_data,
-            'suggestions': next_suggestions,
-            'language': language,
-            'cached': False,
-            'processing_time': processing_time,
-            'voice_engine': 'coe_font' if use_coe_font and language == 'ja' else 'openai_tts',
-            'currentTopic': current_topic,
-            'relationshipLevel': relationship_level_style,
-            'mentalState': session_info['mental_state']  # 🎯 精神状態も送信
-        }
-        
-        print(f"📤 通常処理応答送信完了 - 感情: {final_emotion}, 処理時間: {processing_time:.3f}秒")
-        emit('response', response_data)
-        
-    except Exception as e:
-        print(f"❌ メッセージ処理エラー: {e}")
-        import traceback
-        traceback.print_exc()
-        emit('error', {'message': f'メッセージの処理中にエラーが発生しました: {str(e)}'})
+    if not session_id or not visitor_id:
+        emit('error', {'message': 'Invalid session'})
+        return
+    
+    session_data = get_session_data(session_id)
+    visitor_data = get_visitor_data(visitor_id)
+    
+    if not session_data or not visitor_data:
+        emit('error', {'message': 'Session not found'})
+        return
+    
+    # 質問回数を更新
+    increment_question_count(session_id, visitor_id, message)
+    
+    # 会話履歴を更新
+    conversation_history = session_data.conversation_history or []
+    conversation_history.append({
+        'role': 'user',
+        'content': message,
+        'timestamp': datetime.utcnow().isoformat()
+    })
+    
+    # AIの応答を生成
+    response = generate_ai_response(message, session_data, visitor_data)
+    
+    # 感情分析を実行
+    emotion, confidence, mental_state = analyze_emotion(message, session_data)
+    update_emotion_history(session_id, emotion, confidence, mental_state)
+    
+    # 会話履歴に応答を追加
+    conversation_history.append({
+        'role': 'assistant',
+        'content': response,
+        'timestamp': datetime.utcnow().isoformat()
+    })
+    
+    # セッションデータを更新
+    session_data.conversation_history = conversation_history
+    session_data.last_activity = datetime.utcnow()
+    db.session.commit()
+    
+    emit('response', {
+        'message': response,
+        'emotion': emotion,
+        'mental_state': mental_state
+    })
 
 # 音声メッセージハンドラー（感情履歴対応）
 @socketio.on('audio_message')
@@ -1484,6 +1334,80 @@ def handle_audio_message(data):
         import traceback
         traceback.print_exc()
         emit('error', {'message': '音声メッセージの処理中にエラーが発生しました'})
+
+@socketio.on('voice_message')
+def handle_voice_message(data):
+    """音声メッセージハンドラー"""
+    session_id = session.get('session_id')
+    visitor_id = session.get('visitor_id')
+    audio_data = data.get('audio')
+    
+    if not session_id or not visitor_id:
+        emit('error', {'message': 'Invalid session'})
+        return
+    
+    session_data = get_session_data(session_id)
+    visitor_data = get_visitor_data(visitor_id)
+    
+    if not session_data or not visitor_data:
+        emit('error', {'message': 'Session not found'})
+        return
+    
+    try:
+        # 音声をテキストに変換
+        message = speech_processor.transcribe(audio_data)
+        
+        if not message:
+            emit('error', {'message': 'Failed to transcribe audio'})
+            return
+        
+        # 質問回数を更新
+        increment_question_count(session_id, visitor_id, message)
+        
+        # 会話履歴を更新
+        conversation_history = session_data.conversation_history or []
+        conversation_history.append({
+            'role': 'user',
+            'content': message,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+        # AIの応答を生成
+        response = generate_ai_response(message, session_data, visitor_data)
+        
+        # 感情分析を実行
+        emotion, confidence, mental_state = analyze_emotion(message, session_data)
+        update_emotion_history(session_id, emotion, confidence, mental_state)
+        
+        # 音声応答を生成
+        try:
+            audio_response = generate_audio_response(response, session_data.language, emotion)
+        except Exception as e:
+            print(f"音声生成エラー: {e}")
+            audio_response = None
+        
+        # 会話履歴に応答を追加
+        conversation_history.append({
+            'role': 'assistant',
+            'content': response,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+        # セッションデータを更新
+        session_data.conversation_history = conversation_history
+        session_data.last_activity = datetime.utcnow()
+        db.session.commit()
+        
+        emit('response', {
+            'message': response,
+            'emotion': emotion,
+            'mental_state': mental_state,
+            'audio': audio_response
+        })
+        
+    except Exception as e:
+        print(f"音声メッセージ処理エラー: {e}")
+        emit('error', {'message': f'音声メッセージの処理中にエラーが発生しました: {str(e)}'})
 
 @app.context_processor
 def inject_data_management_url():

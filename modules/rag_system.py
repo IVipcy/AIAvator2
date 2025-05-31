@@ -1,5 +1,8 @@
 import os
 from dotenv import load_dotenv
+from supabase import create_client, Client
+from typing import Dict, List, Optional, Tuple
+from datetime import datetime
 
 # 環境変数をロード
 load_dotenv()
@@ -19,6 +22,12 @@ class RAGSystem:
         self.persist_directory = persist_directory
         self.embeddings = OpenAIEmbeddings()
         self.openai_client = OpenAI()
+        
+        # Supabaseクライアントの初期化
+        self.supabase: Client = create_client(
+            os.getenv('SUPABASE_URL'),
+            os.getenv('SUPABASE_KEY')
+        )
         
         # 🎯 感情履歴管理システム
         self.emotion_history = deque(maxlen=10)  # 最新10個の感情を記録
@@ -72,9 +81,6 @@ class RAGSystem:
             'physical_fatigue': 20,    # 0-100: 身体的疲労
             'fatigue_expressed_count': 0  # 疲労表現の回数をカウント
         }
-        
-        # 🎯 サジェスチョン履歴
-        self.selected_suggestions = []
         
         # 🎯 時間帯による気分の変化
         self.time_based_mood = {
@@ -1116,25 +1122,76 @@ class RAGSystem:
         # 🎯 関係性レベルに応じたサジェスチョンを生成（重複排除機能付き）
         return self.generate_relationship_based_suggestions(relationship_style, current_topic, selected_suggestions)
     
-    def answer_with_suggestions(self, question, context="", question_count=1, relationship_style='formal', previous_emotion='neutral', selected_suggestions=[]):
-        """質問に回答し、次のサジェスチョンも生成（関係性レベル・感情連続性対応版）"""
-        # まず通常の回答を生成（関係性レベルと感情連続性を考慮）
-        answer = self.answer_question(question, context, question_count, relationship_style, previous_emotion)
-        
-        # 現在のトピックを抽出
-        current_topic = self.extract_topic(question, answer)
-        
-        # 🎯 関係性レベルに応じたサジェスチョンを生成（重複排除機能付き）
-        suggestions = self.generate_relationship_based_suggestions(relationship_style, current_topic, selected_suggestions)
-        
-        # 最新の感情を取得
-        current_emotion = self.emotion_history[-1] if self.emotion_history else previous_emotion
-        
-        return {
-            'answer': answer,
-            'suggestions': suggestions,
-            'current_emotion': current_emotion  # 🎯 現在の感情も返す
-        }
+    def answer_with_suggestions(
+        self,
+        question: str,
+        context: str = "",
+        question_count: int = 1,
+        relationship_style: str = 'formal',
+        previous_emotion: str = 'neutral',
+        selected_suggestions: List[str] = []
+    ) -> Dict:
+        """質問に回答し、サジェスチョンを生成"""
+        try:
+            # 回答を生成
+            answer = self.answer_question(
+                question,
+                context,
+                question_count,
+                relationship_style,
+                previous_emotion
+            )
+            
+            # トピックを抽出
+            topic = self.extract_topic(question, answer)
+            
+            # 次のサジェスチョンを生成
+            next_suggestions = self.generate_next_suggestions(
+                question,
+                answer,
+                relationship_style,
+                selected_suggestions
+            )
+            
+            # 感情を分析
+            user_emotion = self._analyze_user_emotion(question)
+            
+            # 現在の時間帯を取得
+            hour = datetime.now().hour
+            time_of_day = (
+                'morning' if 5 <= hour < 12
+                else 'afternoon' if 12 <= hour < 17
+                else 'evening' if 17 <= hour < 22
+                else 'night'
+            )
+            
+            # 精神状態を更新
+            self._update_mental_state(user_emotion, topic, time_of_day)
+            
+            # 次の感情を計算
+            next_emotion = self._calculate_next_emotion(
+                previous_emotion,
+                user_emotion,
+                self.mental_states
+            )
+            
+            return {
+                'answer': answer,
+                'suggestions': next_suggestions,
+                'current_emotion': next_emotion,
+                'mental_state': self.mental_states
+            }
+            
+        except Exception as e:
+            print(f"回答生成エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'answer': "申し訳ありません。回答の生成中にエラーが発生しました。",
+                'suggestions': [],
+                'current_emotion': 'neutral',
+                'mental_state': self.mental_states
+            }
     
     def get_knowledge_context(self, query):
         """質問に関連する専門知識を取得"""
@@ -1216,80 +1273,79 @@ class RAGSystem:
         
         print("\n=== システムテスト完了 ===")
     
-    def process_documents(self, directory="uploads"):
-        """ディレクトリ内のドキュメントを処理"""
+    async def process_documents(self, directory="uploads"):
+        """ドキュメントを処理してベクトルDBに保存"""
         try:
-            # ディレクトリが存在するか確認
-            if not os.path.exists(directory):
-                print(f"ディレクトリが見つかりません: {directory}")
-                return False
+            # Supabaseストレージからファイル一覧を取得
+            files = self.supabase.storage.from_('uploads').list()
             
-            # ドキュメントを読み込む
+            # 一時ディレクトリを作成
+            temp_dir = "temp_uploads"
+            os.makedirs(temp_dir, exist_ok=True)
+            
             documents = []
             
-            # テキストファイルを読み込む（エンコーディングを指定）
-            text_loader = DirectoryLoader(
-                directory,
-                glob="**/*.txt",
-                loader_cls=lambda file_path: TextLoader(file_path, encoding='utf-8')
-            )
-            try:
-                text_docs = text_loader.load()
-                documents.extend(text_docs)
-                print(f"テキストファイルを読み込みました: {len(text_docs)}個")
-                
-                # ファイル名を表示
-                for doc in text_docs:
-                    print(f"- {doc.metadata.get('source', 'unknown')}")
+            for file in files:
+                try:
+                    # ファイルをダウンロード
+                    file_data = self.supabase.storage.from_('uploads').download(file['name'])
+                    temp_path = os.path.join(temp_dir, file['name'])
                     
-            except Exception as e:
-                print(f"テキストファイル読み込みエラー: {e}")
+                    with open(temp_path, 'wb') as f:
+                        f.write(file_data)
+                    
+                    # ファイルの種類に応じてローダーを選択
+                    if file['name'].endswith('.pdf'):
+                        loader = PyPDFLoader(temp_path)
+                    else:
+                        loader = TextLoader(temp_path)
+                    
+                    documents.extend(loader.load())
+                    
+                    # 一時ファイルを削除
+                    os.remove(temp_path)
+                    
+                except Exception as e:
+                    print(f"ファイル処理エラー ({file['name']}): {e}")
+                    continue
             
-            # PDFファイルを読み込む
-            pdf_loader = DirectoryLoader(directory, glob="**/*.pdf", loader_cls=PyPDFLoader)
-            try:
-                pdf_docs = pdf_loader.load()
-                documents.extend(pdf_docs)
-                print(f"PDFファイルを読み込みました: {len(pdf_docs)}個")
-            except Exception as e:
-                print(f"PDFファイル読み込みエラー: {e}")
+            # 一時ディレクトリを削除
+            os.rmdir(temp_dir)
             
             if not documents:
-                print("ドキュメントが見つかりませんでした")
+                print("処理可能なドキュメントが見つかりませんでした")
                 return False
             
-            print(f"合計 {len(documents)}個のドキュメントを読み込みました")
-            
-            # ドキュメントを分割
+            # テキストを分割
             text_splitter = CharacterTextSplitter(
-                chunk_size=1000, 
+                chunk_size=1000,
                 chunk_overlap=200,
                 separator="\n"
             )
-            texts = text_splitter.split_documents(documents)
             
-            print(f"{len(texts)}個のチャンクに分割しました")
+            split_docs = text_splitter.split_documents(documents)
             
-            # Chromaデータベースを作成
-            self.db = Chroma.from_documents(
-                documents=texts,
-                embedding=self.embeddings,
-                persist_directory=self.persist_directory
-            )
+            # ベクトルDBを作成または更新
+            if self.db is None:
+                self.db = Chroma.from_documents(
+                    documents=split_docs,
+                    embedding=self.embeddings,
+                    persist_directory=self.persist_directory
+                )
+            else:
+                self.db.add_documents(split_docs)
+            
+            # 永続化
             self.db.persist()
             
-            print("ドキュメント処理が完了しました")
-            
-            # すべてのナレッジを再読み込み
+            # データ構造を更新
             self._load_all_knowledge()
             
-            # システムテスト
-            self.test_system()
-            
+            print(f"✅ {len(split_docs)}個のドキュメントを処理しました")
             return True
             
         except Exception as e:
-            print(f"ドキュメント処理中にエラーが発生しました: {e}")
+            print(f"ドキュメント処理エラー: {e}")
             import traceback
             traceback.print_exc()
             return False
