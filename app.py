@@ -35,6 +35,11 @@ app.config.from_object(Config)
 # データベースの初期化
 db.init_app(app)
 
+# データベーステーブルの作成（開発環境用）
+if not os.environ.get('VERCEL'):
+    with app.app_context():
+        db.create_all()
+
 # Supabaseクライアントの初期化
 supabase: Client = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
 
@@ -56,10 +61,6 @@ socketio = SocketIO(
 
 # 一時アップロードディレクトリの作成
 os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-
-# データベーステーブルの作成
-with app.app_context():
-    db.create_all()
 
 # ファイルアップロード処理の関数
 def save_uploaded_file(file) -> UploadedFile:
