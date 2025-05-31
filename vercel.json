@@ -6,7 +6,9 @@
       "use": "@vercel/python",
       "config": {
         "buildCommand": "pip install -r requirements.txt",
-        "pythonVersion": "3.9"
+        "pythonVersion": "3.9",
+        "root": ".",
+        "outputDirectory": "."
       }
     }
   ],
@@ -15,5 +17,6 @@
       "src": "/(.*)",
       "dest": "app.py"
     }
-  ]
+  ],
+  "framework": "other"
 } 
