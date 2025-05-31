@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "ai-avator2-production",
+  "name": "ai-avator2-pro",
   "git": {
     "deploymentEnabled": {
       "master": true
