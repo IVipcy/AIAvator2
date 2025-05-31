@@ -30,10 +30,5 @@
   "env": {
     "PYTHONUNBUFFERED": "1"
   },
-  "regions": ["hnd1"],
-  "analytics": {
-    "speed": {
-      "enabled": true
-    }
-  }
+  "regions": ["hnd1"]
 } 
