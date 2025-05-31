@@ -2,7 +2,6 @@
 # 感情分析品質改善版 + サジェスチョン重複防止 + 回答品質向上
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit
-from flask_migrate import Migrate
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import os
@@ -35,9 +34,6 @@ app.config.from_object(Config)
 
 # データベースの初期化
 db.init_app(app)
-
-# マイグレーションの初期化
-migrate = Migrate(app, db)
 
 # Supabaseクライアントの初期化
 supabase: Client = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
