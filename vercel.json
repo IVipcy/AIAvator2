@@ -1,6 +1,16 @@
 {
   "version": 2,
   "name": "ai-avator2-pro6",
+  "builds": [
+    {
+      "src": "app.py",
+      "use": "@vercel/python",
+      "config": {
+        "pythonVersion": "3.9",
+        "runtime": "python3.9"
+      }
+    }
+  ],
   "routes": [
     {
       "src": "/socket.io/(.*)",
