@@ -24,5 +24,10 @@
       "src": "/(.*)",
       "dest": "app.py"
     }
-  ]
+  ],
+  "analytics": {
+    "speed": {
+      "enabled": true
+    }
+  }
 } 
