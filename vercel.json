@@ -15,16 +15,32 @@
         "installCommand": "python -m pip install --upgrade pip",
         "pythonVersion": "3.9",
         "root": ".",
-        "outputDirectory": "."
+        "outputDirectory": ".",
+        "maxLambdaSize": "50mb"
       }
     }
   ],
   "routes": [
     {
+      "src": "/socket.io/(.*)",
+      "dest": "app.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "app.py"
     }
   ],
+  "env": {
+    "PYTHONUNBUFFERED": "1"
+  },
+  "functions": {
+    "app.py": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "runtime": "python3.9"
+    }
+  },
+  "regions": ["hnd1"],
   "analytics": {
     "speed": {
       "enabled": true

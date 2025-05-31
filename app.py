@@ -47,21 +47,15 @@ socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode='threading',
-    ping_timeout=60,
-    ping_interval=25,
+    ping_timeout=25,
+    ping_interval=10,
     logger=True,
     engineio_logger=True,
-    allow_upgrades=True,
-    transports=['websocket', 'polling'],
-    max_http_buffer_size=1e8,
     path='socket.io',
+    max_http_buffer_size=5e7,  # 50MB
+    manage_session=False,
     always_connect=True,
-    cookie=False,
-    allow_headers=['*'],
-    methods=['GET', 'POST', 'OPTIONS'],
-    async_handlers=True,
-    monitor_clients=True,
-    ping_interval_grace_period=1000
+    cookie=None
 )
 
 # 一時アップロードディレクトリの作成
@@ -1138,205 +1132,6 @@ def handle_message(data):
 # 音声メッセージハンドラー（感情履歴対応）
 @socketio.on('audio_message')
 def handle_audio_message(data):
-    start_time = time.time()
-    
-    try:
-        session_id = request.sid
-        session_info = get_session_data(session_id)
-        language = session_info['language']
-        
-        audio_data = data.get('audio')
-        visitor_id = data.get('visitorId')
-        conversation_history = data.get('conversationHistory', [])
-        interaction_count = data.get('interactionCount', 0)
-        relationship_level_style = data.get('relationshipLevel', 'formal')
-        
-        if not audio_data:
-            emit('error', {'message': '音声データが受信できませんでした'})
-            return
-
-        # 音声認識
-        text = speech_processor.transcribe_audio(audio_data, language=language[:2])
-        if not text:
-            emit('error', {'message': '音声認識に失敗しました'})
-            return
-
-        emit('transcription', {'text': text})
-        
-        # 訪問者IDと会話履歴を更新
-        if visitor_id:
-            session_info['visitor_id'] = visitor_id
-            session_info['relationship_style'] = relationship_level_style
-        session_info['conversation_history'] = conversation_history
-        session_info['interaction_count'] = interaction_count
-        
-        # 質問回数を更新
-        question_count = increment_question_count(session_id, visitor_id, text)
-        print(f"📊 音声質問回数: {question_count}回目")
-        
-        # トピック抽出
-        current_topic = extract_topic_from_question(text)
-        session_info['current_topic'] = current_topic
-        
-        # 🎯 前回の感情を取得
-        previous_emotion = session_info.get('current_emotion', 'neutral')
-        
-        print(f'🎤 音声認識結果: {text} → 静的キャッシュをチェック中...')
-        
-        cache_stats['total_requests'] += 1
-        
-        static_response = get_static_response(text)
-        
-        if static_response:
-            cache_hit_time = time.time()
-            processing_time = cache_hit_time - start_time
-            
-            print(f"🚀 音声→静的キャッシュヒット！ 処理時間: {processing_time:.3f}秒")
-            
-            cache_stats['cache_hits'] += 1
-            estimated_saved_time = 8.0
-            cache_stats['total_time_saved'] += estimated_saved_time
-            
-            emotion = static_response['emotion']
-            response = static_response['answer']
-            suggestions = static_response.get('suggestions', [])
-            
-            # 🎯 感情履歴を更新
-            update_emotion_history(session_id, emotion, session_info['mental_state'])
-            
-            # 質問回数に応じて応答を調整
-            if question_count > 1:
-                if question_count == 2:
-                    response = f"あ、さっきも聞かれたね。{response}"
-                elif question_count == 3:
-                    response = f"また同じ質問？よっぽど気になるんやね〜。{response}"
-                elif question_count >= 4:
-                    response = f"もう覚えてや〜（笑）でも、もう一回説明するね。{response}"
-            
-            if language == 'en':
-                response = adjust_response_for_language(response, language)
-                translated_suggestions = []
-                for suggestion in suggestions:
-                    translated = adjust_response_for_language(suggestion, language)
-                    translated_suggestions.append(translated)
-                suggestions = translated_suggestions
-            
-            try:
-                audio_response = generate_audio_by_language(
-                    response, 
-                    language, 
-                    emotion_params=emotion
-                )
-            except Exception as e:
-                print(f"❌ 音声応答の音声合成エラー: {e}")
-                audio_response = None
-            
-            # 優先順位付きサジェスチョンを生成
-            visitor_info = get_visitor_data(visitor_id) if visitor_id else None
-            suggestions = generate_prioritized_suggestions(
-                session_info, visitor_info, relationship_level_style, language
-            )
-            
-            response_data = {
-                'message': response,
-                'emotion': emotion,
-                'audio': audio_response,
-                'suggestions': suggestions,
-                'language': language,
-                'cached': True,
-                'processing_time': processing_time,
-                'voice_engine': 'coe_font' if use_coe_font and language == 'ja' else 'openai_tts',
-                'currentTopic': current_topic,
-                'relationshipLevel': relationship_level_style,
-                'mentalState': session_info['mental_state']
-            }
-            
-            print(f"⚡ 音声キャッシュ応答送信完了 - 感情: {emotion}")
-            emit('response', response_data)
-            return
-        
-        print(f"❌ 音声キャッシュミス → 通常処理")
-        cache_stats['cache_misses'] += 1
-
-        try:
-            user_emotion = analyze_emotion(text)
-            print(f"🎭 音声認識テキストの感情分析結果: {user_emotion}")
-        except Exception as e:
-            print(f"❌ 感情分析エラー: {e}")
-            user_emotion = "neutral"
-
-        # 🎯 文脈プロンプトを生成（関係性レベル付き）
-        context_prompt = get_context_prompt(
-            conversation_history, 
-            question_count,
-            relationship_level_style,
-            session_info.get('fatigue_mentioned', False)
-        )
-        
-        # RAGシステムで回答とサジェスションを生成（文脈付き）
-        response_data_rag = rag_system.answer_with_suggestions(
-            text,
-            context=context_prompt,
-            question_count=question_count,
-            relationship_style=relationship_level_style,
-            previous_emotion=previous_emotion  # 🎯 前回の感情も渡す
-        )
-        response = response_data_rag['answer']
-        next_suggestions = response_data_rag.get('suggestions', [])
-        current_emotion = response_data_rag.get('current_emotion', user_emotion)
-        
-        # 疲労表現をチェック
-        if '疲れ' in response and not session_info.get('fatigue_mentioned', False):
-            session_info['fatigue_mentioned'] = True
-        
-        # 🎯 感情履歴を更新
-        if hasattr(rag_system, 'mental_states'):
-            update_emotion_history(session_id, current_emotion, rag_system.mental_states)
-        else:
-            update_emotion_history(session_id, current_emotion)
-        
-        response = adjust_response_for_language(response, language)
-        
-        # 優先順位付きサジェスチョンを生成
-        visitor_info = get_visitor_data(visitor_id) if visitor_id else None
-        next_suggestions = generate_prioritized_suggestions(
-            session_info, visitor_info, relationship_level_style, language
-        )
-        
-        audio_response = generate_audio_by_language(
-            response, 
-            language, 
-            emotion_params=current_emotion
-        )
-        
-        end_time = time.time()
-        processing_time = end_time - start_time
-        
-        response_data = {
-            'message': response,
-            'emotion': current_emotion,
-            'audio': audio_response,
-            'suggestions': next_suggestions,
-            'language': language,
-            'cached': False,
-            'processing_time': processing_time,
-            'voice_engine': 'coe_font' if use_coe_font and language == 'ja' else 'openai_tts',
-            'currentTopic': current_topic,
-            'relationshipLevel': relationship_level_style,
-            'mentalState': session_info['mental_state']
-        }
-        
-        print(f"📤 音声通常処理応答送信完了 - 感情: {current_emotion}, 処理時間: {processing_time:.3f}秒")
-        emit('response', response_data)
-        
-    except Exception as e:
-        print(f"❌ 音声メッセージ処理エラー: {e}")
-        import traceback
-        traceback.print_exc()
-        emit('error', {'message': '音声メッセージの処理中にエラーが発生しました'})
-
-@socketio.on('voice_message')
-def handle_voice_message(data):
     """音声メッセージハンドラー"""
     session_id = session.get('session_id')
     visitor_id = session.get('visitor_id')
@@ -1419,6 +1214,30 @@ def page_not_found(e):
 
 @app.errorhandler(500)
 def internal_server_error(e):
+    error_info = {
+        'error': str(e),
+        'traceback': traceback.format_exc(),
+        'time': datetime.utcnow().isoformat(),
+        'env': 'Vercel' if os.environ.get('VERCEL') else 'Local'
+    }
+    
+    # エラーの詳細をログに出力
+    print('❌ サーバーエラー:', file=sys.stderr)
+    print(f"エラー種別: {type(e).__name__}", file=sys.stderr)
+    print(f"エラーメッセージ: {str(e)}", file=sys.stderr)
+    print(f"発生時刻: {error_info['time']}", file=sys.stderr)
+    print(f"環境: {error_info['env']}", file=sys.stderr)
+    print("スタックトレース:", file=sys.stderr)
+    print(error_info['traceback'], file=sys.stderr)
+    
+    if os.environ.get('VERCEL'):
+        return jsonify({
+            'error': 'Internal Server Error',
+            'message': str(e),
+            'code': 500,
+            'time': error_info['time']
+        }), 500
+    
     return render_template('error.html', error_code=500), 500
 
 @app.after_request
