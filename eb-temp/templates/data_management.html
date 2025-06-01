@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>データ管理 - 感情的AIアバター</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_management.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>データ管理</h1>
+
+        <!-- セッション一覧 -->
+        <section class="section">
+            <h2>セッション一覧</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>訪問者ID</th>
+                            <th>言語</th>
+                            <th>関係性スタイル</th>
+                            <th>最終アクティビティ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for session in sessions %}
+                        <tr>
+                            <td>{{ session.id }}</td>
+                            <td>{{ session.visitor_id }}</td>
+                            <td>{{ session.language }}</td>
+                            <td>{{ session.relationship_style }}</td>
+                            <td>{{ session.last_activity.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 訪問者一覧 -->
+        <section class="section">
+            <h2>訪問者一覧</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>初回訪問</th>
+                            <th>最終訪問</th>
+                            <th>訪問回数</th>
+                            <th>会話回数</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for visitor in visitors %}
+                        <tr>
+                            <td>{{ visitor.id }}</td>
+                            <td>{{ visitor.first_visit.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>{{ visitor.last_visit.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>{{ visitor.visit_count }}</td>
+                            <td>{{ visitor.conversation_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 感情履歴 -->
+        <section class="section">
+            <h2>感情履歴</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>セッションID</th>
+                            <th>感情</th>
+                            <th>信頼度</th>
+                            <th>タイムスタンプ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for emotion in emotions %}
+                        <tr>
+                            <td>{{ emotion.session_id }}</td>
+                            <td>{{ emotion.emotion }}</td>
+                            <td>{{ "%.2f"|format(emotion.confidence) }}</td>
+                            <td>{{ emotion.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- アップロードされたファイル -->
+        <section class="section">
+            <h2>アップロードされたファイル</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ファイル名</th>
+                            <th>ストレージパス</th>
+                            <th>ファイルタイプ</th>
+                            <th>サイズ</th>
+                            <th>アップロード日時</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for file in files %}
+                        <tr>
+                            <td>{{ file.filename }}</td>
+                            <td>{{ file.storage_path }}</td>
+                            <td>{{ file.file_type }}</td>
+                            <td>{{ file.size }} bytes</td>
+                            <td>{{ file.uploaded_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 統計情報 -->
+        <section class="section">
+            <h2>統計情報</h2>
+            <div id="stats-container">
+                <div class="stats-loading">読み込み中...</div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // 統計情報を取得して表示
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('stats-container');
+                container.innerHTML = `
+                    <div class="stats-grid">
+                        <div class="stats-item">
+                            <h3>総セッション数</h3>
+                            <p>${data.total_sessions}</p>
+                        </div>
+                        <div class="stats-item">
+                            <h3>総訪問者数</h3>
+                            <p>${data.total_visitors}</p>
+                        </div>
+                        <div class="stats-item">
+                            <h3>総感情記録数</h3>
+                            <p>${data.total_emotions}</p>
+                        </div>
+                        <div class="stats-item">
+                            <h3>アクティブセッション</h3>
+                            <p>${data.active_sessions}</p>
+                        </div>
+                    </div>
+                    <div class="emotion-distribution">
+                        <h3>感情分布</h3>
+                        <div class="emotion-bars">
+                            ${Object.entries(data.emotion_distribution).map(([emotion, count]) => `
+                                <div class="emotion-bar">
+                                    <div class="emotion-label">${emotion}</div>
+                                    <div class="bar" style="width: ${count / data.total_emotions * 100}%"></div>
+                                    <div class="count">${count}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            })
+            .catch(error => {
+                console.error('統計情報の取得に失敗:', error);
+                document.getElementById('stats-container').innerHTML = `
+                    <div class="error-message">
+                        統計情報の取得に失敗しました。
+                    </div>
+                `;
+            });
+    </script>
+</body>
+</html>

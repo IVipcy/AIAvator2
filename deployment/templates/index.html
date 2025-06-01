@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KYO YUZEN -京友禅職人- REI-</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+</head>
+<body>
+    <!-- 言語選択モーダル -->
+    <div id="language-modal" class="modal">
+        <div class="modal-content">
+            <h2>言語を選択してください / Select Language</h2>
+            <div class="language-buttons">
+                <button id="select-japanese" class="language-button">
+                    <span class="flag">🇯🇵</span>
+                    <span>日本語で話す</span>
+                </button>
+                <button id="select-english" class="language-button">
+                    <span class="flag">🇺🇸</span>
+                    <span>Speak English</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 固定ヘッダー -->
+    <header class="fixed-header">
+        <div class="header-content">
+            <div class="title-container">
+                <h1 class="main-title">
+                    <span class="title-kyo">KYO</span>
+                    <span class="title-yuzen">YUZEN</span>
+                    <span class="title-subtitle">京友禅職人</span>
+                    <span class="title-name">REI</span>
+                </h1>
+            </div>
+            
+            <!-- 固定コントロールボタン -->
+            <div class="fixed-controls">
+                <button id="mute-button" class="control-button mute-button" title="音声のオン/オフ">
+                    🔊
+                </button>
+                <button id="change-language-btn" class="control-button language-button" title="言語設定">
+                    ⚙️
+                </button>
+                <span id="current-language" class="language-display">言語: 日本語</span>
+            </div>
+        </div>
+    </header>
+    
+    <!-- メインコンテンツ -->
+    <div class="main-wrapper">
+        <div class="container">
+            <!-- 🎯 親密度メーター（固定） -->
+            <div class="relationship-meter-container">
+                <div class="relationship-info">
+                    <span class="relationship-label">親密度</span>
+                    <span class="relationship-level">Lv.0 初対面</span>
+                </div>
+                <div class="relationship-meter">
+                    <div class="relationship-progress" style="width: 0%"></div>
+                </div>
+                <div class="relationship-exp">0 / 1 会話</div>
+            </div>
+            
+            <!-- メインコンテンツエリア -->
+            <div class="main-content">
+                <!-- 左側：アバターエリア（固定） -->
+                <div class="avatar-section">
+                    <div class="avatar-placeholder">
+                        <iframe id="unity-frame" src="{{ url_for('static', filename='unity/index.html') }}" width="100%" height="100%" frameborder="0"></iframe>
+                    </div>
+                </div>
+                
+                <!-- 右側：チャットエリア（スクロール可能） -->
+                <div class="chat-section">
+                    <div class="chat-container">
+                        <div id="chat-messages" class="chat-messages"></div>
+                        <div class="input-area">
+                            <textarea id="message-input" placeholder="メッセージを入力..."></textarea>
+                            <div class="button-area">
+                                <button id="send-button">送信</button>
+                                <button id="voice-button">🎤</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>

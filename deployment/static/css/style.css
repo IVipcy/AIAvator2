@@ -1,0 +1,1188 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* 基本設定 */
+html {
+    height: 100%;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+body {
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background: #f5f9fc;
+    overflow-x: hidden;
+}
+
+/* 背景デザイン - 京友禅をイメージした優雅なパターン */
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: 
+        radial-gradient(circle at 20% 30%, rgba(255, 182, 193, 0.15) 0%, transparent 25%),
+        radial-gradient(circle at 80% 70%, rgba(255, 192, 203, 0.12) 0%, transparent 30%),
+        radial-gradient(circle at 40% 80%, rgba(255, 182, 193, 0.1) 0%, transparent 25%),
+        radial-gradient(circle at 60% 20%, rgba(255, 192, 203, 0.1) 0%, transparent 30%),
+        radial-gradient(circle at 30% 60%, rgba(255, 218, 225, 0.08) 0%, transparent 20%),
+        radial-gradient(circle at 70% 40%, rgba(255, 228, 235, 0.08) 0%, transparent 20%),
+        repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 20px,
+            rgba(173, 216, 230, 0.04) 20px,
+            rgba(173, 216, 230, 0.04) 25px
+        ),
+        repeating-linear-gradient(
+            -45deg,
+            transparent,
+            transparent 20px,
+            rgba(173, 216, 230, 0.04) 20px,
+            rgba(173, 216, 230, 0.04) 25px
+        ),
+        radial-gradient(ellipse at 25% 15%, rgba(255, 215, 0, 0.03) 0%, transparent 40%),
+        radial-gradient(ellipse at 75% 85%, rgba(255, 223, 0, 0.03) 0%, transparent 40%),
+        linear-gradient(135deg, 
+            #fafbfc 0%, 
+            #f7f9fb 25%, 
+            #f5f7fa 50%, 
+            #f3f6f9 75%, 
+            #f0f4f8 100%);
+    z-index: -1;
+    animation: backgroundShift 30s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes backgroundShift {
+    0%, 100% { 
+        transform: translateY(0) scale(1);
+        filter: hue-rotate(0deg);
+    }
+    25% {
+        transform: translateY(-5px) scale(1.01);
+        filter: hue-rotate(5deg);
+    }
+    50% { 
+        transform: translateY(-10px) scale(1.02);
+        filter: hue-rotate(10deg);
+    }
+    75% {
+        transform: translateY(-5px) scale(1.01);
+        filter: hue-rotate(5deg);
+    }
+}
+
+/* ヘッダー（スクロールで消える通常のヘッダー） */
+.fixed-header {
+    position: relative;
+    width: 100%;
+    height: 80px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    border-bottom: 1px solid rgba(255, 182, 193, 0.2);
+}
+
+.header-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+}
+
+/* タイトルデザイン */
+.title-container {
+    flex: 1;
+}
+
+.main-title {
+    font-size: 24px;
+    font-weight: 300;
+    color: #333;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    position: relative;
+}
+
+.title-kyo {
+    font-weight: 700;
+    color: #FF69B4;
+    font-size: 28px;
+    letter-spacing: 2px;
+    text-shadow: 2px 2px 4px rgba(255, 105, 180, 0.2);
+}
+
+.title-yuzen {
+    font-weight: 700;
+    color: #FF1493;
+    font-size: 28px;
+    letter-spacing: 2px;
+    text-shadow: 2px 2px 4px rgba(255, 20, 147, 0.2);
+}
+
+.title-subtitle {
+    font-size: 14px;
+    color: #666;
+    font-weight: 400;
+    letter-spacing: 1px;
+    margin: 0 10px;
+    position: relative;
+}
+
+.title-subtitle::before,
+.title-subtitle::after {
+    content: "•";
+    color: #FFB6C1;
+    margin: 0 5px;
+}
+
+.title-name {
+    font-size: 20px;
+    font-weight: 500;
+    color: #FF69B4;
+    letter-spacing: 3px;
+    position: relative;
+}
+
+.title-name::after {
+    content: "";
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, #FF69B4, #FF1493);
+    animation: shimmer 3s infinite;
+}
+
+/* 固定コントロールボタン */
+.fixed-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 8px 15px;
+    border-radius: 25px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    flex-shrink: 0;
+}
+
+/* コントロールボタン - 確実に正円にする */
+.control-button {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    max-width: 40px !important;
+    max-height: 40px !important;
+    border-radius: 50% !important;
+    border: none;
+    cursor: pointer;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    font-size: 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    flex: 0 0 40px !important;
+    flex-shrink: 0 !important;
+    aspect-ratio: 1 / 1 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.mute-button {
+    background: linear-gradient(145deg, #4CAF50, #45a049);
+    color: white;
+}
+
+.mute-button:hover {
+    transform: scale(1.1) rotate(5deg);
+    box-shadow: 0 4px 10px rgba(76, 175, 80, 0.3);
+}
+
+.mute-button.muted {
+    background: linear-gradient(145deg, #f44336, #da190b);
+}
+
+.language-button {
+    background: linear-gradient(145deg, #2196F3, #1976D2);
+    color: white;
+}
+
+.language-button:hover {
+    transform: scale(1.1) rotate(-5deg);
+    box-shadow: 0 4px 10px rgba(33, 150, 243, 0.3);
+}
+
+.language-display {
+    font-size: 13px;
+    color: #666;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+/* メインラッパー - 固定レイアウト */
+.main-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding-top: 80px; /* ヘッダーの高さ分の余白 */
+}
+
+.container {
+    flex: 1;
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+/* 親密度メーター（固定） */
+.relationship-meter-container {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: 
+        linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 250, 255, 0.95)),
+        radial-gradient(ellipse at top left, rgba(255, 182, 193, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at bottom right, rgba(255, 192, 203, 0.08) 0%, transparent 50%);
+    border-radius: 25px;
+    box-shadow: 
+        0 5px 25px rgba(255, 182, 193, 0.18),
+        inset 0 1px 3px rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(255, 182, 193, 0.2);
+    position: relative;
+    overflow: hidden;
+    animation: fadeIn 0.5s ease-out;
+    max-height: 150px;
+}
+
+.relationship-meter-container::before {
+    content: "";
+    position: absolute;
+    top: -100%;
+    right: -100%;
+    width: 300%;
+    height: 300%;
+    background: 
+        radial-gradient(circle, rgba(255, 182, 193, 0.03) 0%, transparent 40%),
+        conic-gradient(from 45deg at 50% 50%,
+            transparent,
+            rgba(255, 215, 0, 0.02) 90deg,
+            transparent 180deg,
+            rgba(255, 182, 193, 0.02) 270deg,
+            transparent 360deg);
+    animation: rotate 40s linear infinite;
+}
+
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.relationship-meter-container::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        linear-gradient(105deg, 
+            transparent 40%, 
+            rgba(255, 215, 0, 0.05) 50%, 
+            transparent 60%);
+    animation: goldShimmer 8s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes goldShimmer {
+    0%, 100% { transform: translateX(-100%); }
+    50% { transform: translateX(100%); }
+}
+
+.relationship-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 1;
+}
+
+.relationship-label {
+    font-size: 14px;
+    color: #666;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.relationship-level {
+    font-size: 18px;
+    font-weight: bold;
+    background: linear-gradient(135deg, #FF69B4, #FF1493);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 20px rgba(255, 105, 180, 0.3);
+    letter-spacing: 0.5px;
+}
+
+.relationship-meter {
+    width: 100%;
+    height: 28px;
+    background: 
+        linear-gradient(to right, #f8f8fb, #ffe6f2),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.5), transparent);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 12px 0;
+    box-shadow: 
+        inset 0 2px 5px rgba(0, 0, 0, 0.08),
+        inset 0 -1px 2px rgba(255, 255, 255, 0.8);
+    position: relative;
+    z-index: 1;
+}
+
+.relationship-progress {
+    height: 100%;
+    background: 
+        linear-gradient(90deg, 
+            #FFB6C1 0%, 
+            #FF69B4 30%, 
+            #FF1493 60%, 
+            #FF69B4 100%);
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    box-shadow: 
+        0 0 15px rgba(255, 105, 180, 0.5),
+        inset 0 1px 2px rgba(255, 255, 255, 0.3);
+    background-size: 200% 100%;
+    animation: gradientFlow 3s ease infinite;
+}
+
+@keyframes gradientFlow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.relationship-progress::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.4) 50%, 
+        transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.relationship-exp {
+    font-size: 13px;
+    color: #888;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+}
+
+/* メインコンテンツ（横並び） */
+.main-content {
+    flex: 1;
+    display: flex;
+    gap: 20px;
+    min-height: 0;
+    align-items: stretch;
+    overflow: hidden;
+}
+
+/* 左側：アバターセクション（固定・レスポンシブ） */
+.avatar-section {
+    flex: 0 0 50%;
+    max-width: 600px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* アバタープレースホルダー */
+.avatar-placeholder {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-width: 600px;
+    max-height: 600px;
+    background: 
+        linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(250, 250, 255, 0.95)),
+        radial-gradient(circle at 30% 30%, rgba(255, 182, 193, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 70% 70%, rgba(173, 216, 230, 0.05) 0%, transparent 50%);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    box-shadow: 
+        0 8px 25px rgba(255, 182, 193, 0.15),
+        inset 0 1px 3px rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    position: relative;
+}
+
+.avatar-placeholder::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: 
+        radial-gradient(circle at center, transparent 30%, rgba(255, 182, 193, 0.03) 100%),
+        conic-gradient(from 0deg at 50% 50%, 
+            transparent 0deg,
+            rgba(255, 215, 0, 0.02) 60deg,
+            transparent 120deg,
+            rgba(255, 182, 193, 0.02) 180deg,
+            transparent 240deg,
+            rgba(173, 216, 230, 0.02) 300deg,
+            transparent 360deg);
+    animation: slowRotate 60s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes slowRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+#unity-frame {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    border-radius: 20px;
+}
+
+/* 右側：チャットセクション */
+.chat-section {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* チャットコンテナ */
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    box-shadow: 0 8px 25px rgba(173, 216, 230, 0.15);
+    overflow: hidden;
+    min-height: 0;
+    max-height: 100%;
+    position: relative;
+}
+
+/* チャットメッセージ */
+.chat-messages {
+    flex: 1;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 20px;
+    background: linear-gradient(145deg, #ffffff, #f9f9ff);
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #FFB6C1 rgba(255, 182, 193, 0.1);
+    position: relative;
+    min-height: 0;
+    max-height: 100%;
+}
+
+/* スクロールバーを確実に表示 */
+.chat-messages::-webkit-scrollbar {
+    width: 6px !important;
+    display: block !important;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #FFB6C1, #FF69B4);
+    border-radius: 10px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: rgba(255, 182, 193, 0.1);
+    border-radius: 10px;
+}
+
+.chat-messages::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(circle at 10% 20%, rgba(255, 182, 193, 0.03) 1%, transparent 8%),
+        radial-gradient(circle at 90% 80%, rgba(173, 216, 230, 0.03) 1%, transparent 8%);
+    background-size: 80px 80px;
+    background-repeat: repeat;
+    z-index: -1;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* メッセージスタイル */
+.message {
+    margin-bottom: 15px;
+    animation: messageSlide 0.3s ease-out;
+}
+
+@keyframes messageSlide {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.user-message {
+    background: linear-gradient(135deg, #e6f9e6, #c2eac2);
+    margin-left: auto;
+    padding: 12px 18px;
+    border-radius: 20px 20px 5px 20px;
+    box-shadow: 0 3px 10px rgba(0, 150, 80, 0.15);
+    position: relative;
+    color: #333;
+    line-height: 1.6;
+    max-width: 80%;
+    font-size: 15px;
+}
+
+.ai-message, .greeting-message {
+    background: linear-gradient(135deg, #fff8ff, #ffe6f2);
+    padding: 12px 18px;
+    border-radius: 20px 20px 20px 5px;
+    position: relative;
+    margin-right: auto;
+    margin-bottom: 15px;
+    box-shadow: 0 3px 10px rgba(255, 105, 180, 0.15);
+    font-size: 15px;
+    color: #333;
+    max-width: 80%;
+    line-height: 1.6;
+}
+
+.ai-message::before,
+.greeting-message::before {
+    content: "✨";
+    position: absolute;
+    font-size: 13px;
+    color: #FFD700;
+    animation: twinkle 2s ease-in-out infinite alternate;
+    top: -6px;
+    left: 8px;
+}
+
+@keyframes twinkle {
+    0% {
+        opacity: 0.5;
+        transform: scale(0.8) rotate(0deg);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1.2) rotate(15deg);
+    }
+}
+
+/* 入力エリア（画面下部に固定） */
+.input-area {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 15px;
+    background: linear-gradient(145deg, #ffffff, #f9f9ff);
+    border-top: 1px solid rgba(221, 221, 255, 0.3);
+    border-radius: 0 0 20px 20px;
+}
+
+#message-input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid rgba(200, 200, 230, 0.5);
+    border-radius: 15px;
+    margin-bottom: 12px;
+    resize: none;
+    height: 80px;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    color: #444;
+    background-color: rgba(250, 250, 255, 0.7);
+    transition: all 0.3s ease;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+#message-input:focus {
+    outline: none;
+    border-color: rgba(255, 182, 193, 0.8);
+    box-shadow: 0 0 0 3px rgba(255, 182, 193, 0.2);
+    background-color: #fff;
+}
+
+.button-area {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+button {
+    padding: 10px 20px;
+    background: linear-gradient(145deg, #4dbd52, #5acf60);
+    color: white;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    transition: all 0.3s ease;
+    box-shadow: 0 3px 10px rgba(77, 189, 82, 0.25);
+}
+
+button:hover {
+    background: linear-gradient(145deg, #5acf60, #4dbd52);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(77, 189, 82, 0.35);
+}
+
+button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 5px rgba(77, 189, 82, 0.2);
+}
+
+#voice-button {
+    background: linear-gradient(145deg, #2196F3, #1e88e5);
+    box-shadow: 0 3px 10px rgba(33, 150, 243, 0.25);
+}
+
+#voice-button:hover {
+    background: linear-gradient(145deg, #1e88e5, #2196F3);
+    box-shadow: 0 5px 15px rgba(33, 150, 243, 0.35);
+}
+
+#voice-button.recording {
+    background: linear-gradient(145deg, #f44336, #e53935);
+    animation: pulse 1s infinite;
+    box-shadow: 0 3px 15px rgba(244, 67, 54, 0.4);
+}
+
+@keyframes pulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.05); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* サジェスション */
+.suggestions-container {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    animation: fadeIn 0.5s ease-in;
+}
+
+.suggestion-button {
+    padding: 8px 16px;
+    background: linear-gradient(to right, #FFF0F5, #FFE6F2);
+    border: 1px solid #FFD1DC;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    color: #555;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(255, 182, 193, 0.2);
+}
+
+.suggestion-button:hover {
+    background: linear-gradient(to right, #FFE4E1, #FFD6E0);
+    color: #333;
+    border-color: #FFB6C1;
+    transform: translateY(-2px);
+    box-shadow: 0 3px 8px rgba(255, 182, 193, 0.35);
+}
+
+/* レベルアップエフェクト */
+.levelup-message {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #FFB6C1, #FF69B4);
+    color: white;
+    padding: 20px 40px;
+    border-radius: 30px;
+    font-size: 20px;
+    font-weight: bold;
+    box-shadow: 0 5px 30px rgba(255, 105, 180, 0.5);
+    z-index: 2000;
+    animation: levelupPulse 0.5s ease-out;
+    text-align: center;
+}
+
+@keyframes levelupPulse {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+}
+
+/* キラキラエフェクト */
+.sparkle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: #FFD700;
+    border-radius: 50%;
+    animation: sparkleAnimation 2s ease-out forwards;
+    pointer-events: none;
+}
+
+@keyframes sparkleAnimation {
+    0% {
+        transform: translateY(0) scale(0);
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(-50px) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-100px) scale(0);
+        opacity: 0;
+    }
+}
+
+/* 言語選択モーダル */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+}
+
+.modal-content {
+    background: linear-gradient(145deg, #ffffff, #f9f9ff);
+    padding: 40px;
+    border-radius: 25px;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+    text-align: center;
+    max-width: 500px;
+    width: 90%;
+    border: 1px solid rgba(255, 182, 193, 0.3);
+}
+
+.modal-content h2 {
+    color: #333;
+    margin-bottom: 30px;
+    font-weight: 500;
+}
+
+.language-buttons {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+}
+
+.language-button {
+    padding: 20px 40px;
+    background: linear-gradient(145deg, #f0f0f0, #ffffff);
+    border: 2px solid #ddd;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+
+.language-button:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+    border-color: #FFB6C1;
+    background: linear-gradient(145deg, #fff, #fef5f7);
+}
+
+.flag {
+    font-size: 40px;
+}
+
+/* フェードインアニメーション */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* フェードアウト */
+.fade-out {
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+    pointer-events: none;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 1200px) {
+    .avatar-section {
+        flex: 0 0 45%;
+        max-width: 500px;
+    }
+}
+
+@media (max-width: 900px) {
+    /* モバイルでも固定レイアウトを維持 */
+    .main-wrapper {
+        padding-top: 60px;
+    }
+    
+    .fixed-header {
+        height: 60px;
+    }
+    
+    .container {
+        padding: 15px;
+    }
+    
+    .main-content {
+        flex-direction: column;
+        height: 100%;
+    }
+    
+    /* アバターセクションを拡大（50px追加） */
+    .avatar-section {
+        flex: 0 0 auto;
+        width: 100%;
+        height: 45vh;
+        max-height: 450px;
+        margin-bottom: 15px;
+    }
+    
+    .avatar-placeholder {
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: 100%;
+        aspect-ratio: auto;
+    }
+    
+    /* モバイルでアバターの頭部を優先表示 */
+    #unity-frame {
+        transform: translateY(-8%);
+        height: 100%;
+    }
+    
+    /* チャットセクションは残りのスペースを使用 */
+    .chat-section {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+    }
+    
+    .chat-container {
+        height: 100%;
+    }
+    
+    /* 入力エリアのスペースを確保するためメッセージエリアの下部パディングを追加 */
+    .chat-messages {
+        padding-bottom: 140px;
+    }
+    
+    /* モバイルでもスクロールバーを表示 */
+    .chat-messages {
+        scrollbar-width: thin !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .chat-messages::-webkit-scrollbar {
+        width: 6px !important;
+        display: block !important;
+    }
+    
+    .header-content {
+        padding: 10px 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 100%;
+        gap: 10px;
+    }
+    
+    .main-title {
+        font-size: 18px;
+        flex-wrap: wrap;
+    }
+    
+    .title-kyo, .title-yuzen {
+        font-size: 20px;
+    }
+    
+    .title-subtitle {
+        font-size: 12px;
+        margin: 0 5px;
+    }
+    
+    .title-name {
+        font-size: 16px;
+    }
+    
+    .fixed-controls {
+        padding: 5px 10px;
+        gap: 8px;
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+    }
+    
+    /* モバイルでもコントロールボタンは正円を確実に維持 */
+    .control-button {
+        width: 35px !important;
+        height: 35px !important;
+        min-width: 35px !important;
+        min-height: 35px !important;
+        max-width: 35px !important;
+        max-height: 35px !important;
+        font-size: 18px;
+        flex: 0 0 35px !important;
+        aspect-ratio: 1 / 1 !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .language-display {
+        font-size: 12px;
+    }
+    
+    /* 親密度メーターをコンパクトに */
+    .relationship-meter-container {
+        padding: 15px;
+        margin-bottom: 15px;
+        max-height: 120px;
+    }
+    
+    .relationship-label {
+        font-size: 13px;
+    }
+    
+    .relationship-level {
+        font-size: 16px;
+    }
+    
+    .relationship-meter {
+        height: 24px;
+    }
+    
+    .relationship-exp {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 600px) {
+    .main-title {
+        font-size: 16px;
+    }
+    
+    .title-kyo, .title-yuzen {
+        font-size: 18px;
+    }
+    
+    .title-subtitle {
+        display: none;
+    }
+    
+    .title-name {
+        font-size: 14px;
+    }
+    
+    .fixed-controls {
+        padding: 5px 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+    
+    /* さらに小さい画面でもコントロールボタンは正円を確実に維持 */
+    .control-button {
+        width: 32px !important;
+        height: 32px !important;
+        min-width: 32px !important;
+        min-height: 32px !important;
+        max-width: 32px !important;
+        max-height: 32px !important;
+        font-size: 16px;
+        flex: 0 0 32px !important;
+        aspect-ratio: 1 / 1 !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .language-display {
+        display: none;
+    }
+    
+    /* アバターセクションをさらに拡大（計75px追加） */
+    .avatar-section {
+        height: 40vh;
+        max-height: 375px;
+    }
+    
+    /* 小さい画面でもアバターの頭部を確実に表示 */
+    #unity-frame {
+        transform: translateY(-10%);
+        height: 100%;
+    }
+    
+    .chat-messages {
+        padding: 15px;
+        padding-bottom: 130px;
+    }
+    
+    /* 入力エリアをコンパクトに */
+    #message-input {
+        height: 60px;
+        font-size: 13px;
+    }
+    
+    .button-area button {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+    
+    /* 小さい画面でもスクロールバーを表示 */
+    .chat-messages {
+        scrollbar-width: thin !important;
+    }
+    
+    .chat-messages::-webkit-scrollbar {
+        width: 6px !important;
+        display: block !important;
+    }
+}
+
+/* さらに小さい画面向けの追加調整 */
+@media (max-width: 480px) {
+    /* アバターセクションをさらに拡大（計100px追加） */
+    .avatar-section {
+        height: 38vh;
+        max-height: 350px;
+    }
+    
+    /* より積極的に頭部を表示 */
+    #unity-frame {
+        transform: translateY(-12%);
+        height: 100%;
+    }
+    
+    /* 最小画面でも正円ボタンを維持 */
+    .control-button {
+        width: 30px !important;
+        height: 30px !important;
+        min-width: 30px !important;
+        min-height: 30px !important;
+        max-width: 30px !important;
+        max-height: 30px !important;
+        font-size: 14px;
+        flex: 0 0 30px !important;
+        aspect-ratio: 1 / 1 !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        position: relative;
+        overflow: hidden;
+    }
+}
